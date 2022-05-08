@@ -1,12 +1,8 @@
 package forms
 
-type Profile struct {
+type User struct {
 	Fullname string `json:"fullname"`
 	About    string `json:"about"`
 	Email    string `json:"email"`
-}
-
-type User struct {
-	Profile
-	Nickname string `json:"nickname"`
+	Nickname string `json:"nickname,omitempty"`
 }
