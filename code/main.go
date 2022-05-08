@@ -36,28 +36,23 @@ func initDB(initDBPath string) *sql.DB {
 		os.Getenv("POSTGRES_PASSWORD"),
 		os.Getenv("POSTGRES_DB"),
 	)
-	fmt.Println("hui")
 	dbs, err := sql.Open("postgres", connectString)
 
 	if err != nil {
-		fmt.Println("hui1")
 		log.Fatal(err)
 	}
 
 	if err = dbs.Ping(); err != nil {
-		fmt.Println("hui2")
 		log.Fatal(err)
 	}
 
 	sql, err := ioutil.ReadFile(initDBPath)
 	if err != nil {
-		fmt.Println("hui3")
 		log.Fatal(err)
 	}
 
 	_, err = dbs.Exec(string(sql))
 	if err != nil {
-		fmt.Println("hui4")
 		log.Fatal(err)
 	}
 
