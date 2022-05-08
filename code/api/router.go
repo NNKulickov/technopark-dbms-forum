@@ -1,6 +1,12 @@
 package api
 
-import "github.com/labstack/echo/v4"
+import (
+	"database/sql"
+	"github.com/labstack/echo/v4"
+	_ "github.com/lib/pq"
+)
+
+var DBS *sql.DB
 
 const (
 	forumSlug    = "slug"

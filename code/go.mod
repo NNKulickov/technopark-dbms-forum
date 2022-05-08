@@ -4,7 +4,9 @@ go 1.18
 
 require (
 	github.com/labstack/echo/v4 v4.7.2
+	github.com/lib/pq v1.10.5
 	github.com/swaggo/echo-swagger v1.3.2
+	github.com/swaggo/swag v1.8.1
 )
 
 require (
@@ -21,7 +23,6 @@ require (
 	github.com/mattn/go-colorable v0.1.11 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/swaggo/files v0.0.0-20210815190702-a29dd2bc99b2 // indirect
-	github.com/swaggo/swag v1.8.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.1 // indirect
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
