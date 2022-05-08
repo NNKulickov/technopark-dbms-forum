@@ -25,13 +25,14 @@ func main() {
 
 func initDB(initDBPath string) *sql.DB {
 	connectString := fmt.Sprintf(
-		`host=192.168.99.100
+		`host=%s
 				port=5432
 				user=%s
 				password=%s
 				dbname=%s
 				sslmode=disable
 				TimeZone=Europe/Moscow`,
+		os.Getenv("DB_HOST"),
 		os.Getenv("POSTGRES_USER"),
 		os.Getenv("POSTGRES_PASSWORD"),
 		os.Getenv("POSTGRES_DB"),
@@ -45,7 +46,6 @@ func initDB(initDBPath string) *sql.DB {
 	if err = dbs.Ping(); err != nil {
 		log.Fatal(err)
 	}
-
 	sql, err := ioutil.ReadFile(initDBPath)
 	if err != nil {
 		log.Fatal(err)
