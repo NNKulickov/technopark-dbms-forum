@@ -2,8 +2,8 @@ version: "3.5"
 services:
   lrn:
     build: .
-    expose:
-      - 5000
+    ports:
+      - 5000:5000
     working_dir: /var/www/subd_project
     command: "air -c .air.toml"
     volumes:
@@ -20,8 +20,8 @@ services:
   db:
     image: postgres
     container_name: "project-db"
-    expose:
-      - 5432
+    ports:
+      - 5432:5432
     volumes:
       - ../../db_dump:/tmp
     environment:

@@ -19,15 +19,37 @@ SET row_security = off;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+SET search_path = public, pg_catalog;
 
---
--- Name: actor; Type: TABLE; Schema: public; Owner: postgres
---
+CREATE TABLE IF NOT EXISTS actor (
+    nickname VARCHAR(100) primary key,
+    fullname VARCHAR(400) NOT NULl DEFAULT '',
+    about TEXT NOT NULl default '',
+    email VARCHAR(150) NOT NULL UNIQUE
+);
 
-CREATE TABLE public.actor (
-    id bigint NOT NULL,
-    supersetid bigint NOT NULL,
-    ticketnumber bigint NOT NULL,
-    startedat timestamp without time zone NOT NULL,
-    finishedat timestamp without time zone
+CREATE TABLE IF NOT EXISTS forum(
+    slug VARCHAR(100) NOT NULL primary key,
+    title VARCHAR(100) NOT NULL,
+    host VARCHAR(100) NOT NULL,
+    posts bigint,
+    threads int,
+    foreign key (host) references actor (nickname)
+        on DELETE CASCADE
+);
+
+
+CREATE TABLE IF NOT EXISTS thread(
+    id bigint primary key,
+    title VARCHAR(300) NOT NULL,
+    author VARCHAR(100) NOT NULL,
+    forum VARCHAR(100),
+    message TEXT NOT NULL,
+    votes int,
+    slug VARCHAR(150),
+    created timestamp DEFAULT now(),
+    foreign key (author) references actor (nickname)
+        on DELETE CASCADE,
+    foreign key (forum) references forum (slug)
+        on DELETE CASCADE
 );
