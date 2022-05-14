@@ -23,7 +23,7 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - ../../db_dump:/tmp
+      - ../db_dump:/tmp
     environment:
       - POSTGRES_USER=subd_project
       - POSTGRES_PASSWORD=123azxv
