@@ -16,7 +16,7 @@ func CreateUser(eCtx echo.Context) error {
 		return err
 	}
 	user.Nickname = nickname
-	_, err = DBS.Exec(`
+	_, err = DBS.ExecContext(eCtx.Request().Context(), `
 		insert into 
 		    actor (nickname,fullname,about,email) 
 		values ($1,$2,$3,$4)
@@ -56,7 +56,7 @@ func GetUserProfile(eCtx echo.Context) error {
 		return err
 	}
 	user.Nickname = nickname
-	err = DBS.QueryRow(` 
+	err = DBS.QueryRowContext(eCtx.Request().Context(), ` 
 			select fullname,about,email from actor where  nickname = $1`, user.Nickname).
 		Scan(&user.Fullname, &user.About, &user.Email)
 
@@ -78,7 +78,8 @@ func UpdateUserProfile(eCtx echo.Context) error {
 	}
 	user.Nickname = nickname
 
-	rows, err := DBS.Query(`select nickname from actor 
+	rows, err := DBS.QueryContext(eCtx.Request().Context(),
+		`select nickname from actor 
                 where nickname = $1
 		`, user.Nickname, user.Email)
 	if err != nil || rows == nil {
@@ -88,7 +89,7 @@ func UpdateUserProfile(eCtx echo.Context) error {
 	if rows.Next() {
 		return eCtx.JSON(404, forms.Error{Message: err.Error()})
 	}
-	_, err = DBS.Exec(`
+	_, err = DBS.ExecContext(eCtx.Request().Context(), `
 		update actor 
 		set fullname = $2,
 		    about = $3,
