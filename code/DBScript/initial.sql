@@ -32,20 +32,18 @@ CREATE TABLE IF NOT EXISTS forum(
     slug VARCHAR(100) NOT NULL primary key,
     title VARCHAR(100) NOT NULL,
     host VARCHAR(100) NOT NULL,
-    posts bigint,
-    threads int,
     foreign key (host) references actor (nickname)
         on DELETE CASCADE
 );
 
+CREATE SEQUENCE IF NOT EXISTS thread_id_seq;
 
 CREATE TABLE IF NOT EXISTS thread(
-    id bigint primary key,
-    title VARCHAR(300) NOT NULL,
+    id bigint primary key default nextval('thread_id_seq'),
+    title VARCHAR(300) NOT NULL unique,
     author VARCHAR(100) NOT NULL,
     forum VARCHAR(100),
     message TEXT NOT NULL,
-    votes int,
     slug VARCHAR(150),
     created timestamp DEFAULT now(),
     foreign key (author) references actor (nickname)
@@ -53,3 +51,31 @@ CREATE TABLE IF NOT EXISTS thread(
     foreign key (forum) references forum (slug)
         on DELETE CASCADE
 );
+
+CREATE SEQUENCE IF NOT EXISTS post_id_seq;
+
+CREATE TABLE IF NOT EXISTS post(
+    id bigint primary key default nextval('post_id_seq'),
+    parent bigint,
+    author VARCHAR(100) references actor (nickname)
+    on DELETE CASCADE,
+    message TEXT NOT NULL,
+    isEdited boolean,
+    forum VARCHAR(100) references forum(slug)
+    on DELETE CASCADE not null,
+    threadid bigint references thread(id)
+    on DELETE CASCADE not null,
+    created timestamp DEFAULT now()
+);
+
+CREATE SEQUENCE IF NOT EXISTS vote_id_seq;
+
+CREATE TABLE IF NOT EXISTS vote(
+    id bigint primary key default nextval('vote_id_seq'),
+    threadid bigint references thread (id)
+    on DELETE CASCADE not null,
+    nickname VARCHAR(100) references actor (nickname)
+    on DELETE CASCADE not null,
+    voice smallint not null
+);
+
