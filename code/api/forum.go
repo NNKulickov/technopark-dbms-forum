@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/NNKulickov/technopark-dbms-forum/forms"
 	"github.com/labstack/echo/v4"
+	"net/http"
+	"strings"
 )
 
 func CreateForum(eCtx echo.Context) error {
@@ -166,5 +168,134 @@ func CreateForumThread(eCtx echo.Context) error {
 		Message: "none such user or forum"})
 }
 
-func GetForumUsers(eCtx echo.Context) error   { return nil }
-func GetForumThreads(eCtx echo.Context) error { return nil }
+func GetForumUsers(eCtx echo.Context) error {
+	slug := eCtx.Param(forumSlug)
+	ctx := eCtx.Request().Context()
+	users := forms.UserFilter{}
+	if err := eCtx.Bind(&users); err != nil {
+		fmt.Println("GetForumUsers (1):", err)
+		return err
+	}
+	build := strings.Builder{}
+	build.WriteString("with users(nickname,fullname,about,email) as (")
+	addSourceUser(&build, "post")
+	addSinceUser(&build, users.Since)
+	addSourceUser(&build, "thread")
+	addSinceUser(&build, users.Since)
+	build.WriteString(`
+		select nickname,fullname,about,email from users 
+		    ORDER BY lower(nickname) 
+		    limit nullif($2,0)
+		`)
+	if users.Desc {
+		build.WriteString(" Desc")
+	}
+	fmt.Println("result: ", build.String())
+	if rows, err := DBS.QueryContext(ctx, build.String(), slug, users.Limit); err == nil {
+		usersResponse := make([]forms.User, 0, 100)
+
+		for rows.Next() {
+			user := forms.User{}
+			if err = rows.
+				Scan(
+					&user.Nickname,
+					&user.Fullname,
+					&user.About,
+					&user.Email,
+				); err != nil {
+				fmt.Println("GetForumUsers (2):", err)
+
+				return eCtx.JSON(http.StatusInternalServerError, forms.Error{
+					Message: "smth wrong"})
+			}
+			usersResponse = append(usersResponse, user)
+		}
+		return eCtx.JSON(http.StatusOK, usersResponse)
+	}
+	return eCtx.JSON(http.StatusNotFound, forms.Error{
+		Message: "none such forum"})
+}
+
+func addSourceUser(builder *strings.Builder, src string) {
+
+	builder.WriteString(fmt.Sprintf(`
+		 	select a.nickname, a.fullname, a.about, a.email from actor a
+				join %s src on a.nickname = src.author
+				where src.forum = $1`, src))
+}
+
+func addSinceUser(builder *strings.Builder, since string) {
+	if since != "" {
+		builder.WriteString(fmt.Sprintf(` and src.nickname > '%s'`, since))
+	}
+}
+
+func GetForumThreads(eCtx echo.Context) error {
+	slug := eCtx.Param(forumSlug)
+	ctx := eCtx.Request().Context()
+	threadsFilter := forms.ThreadFilter{}
+	if err := eCtx.Bind(&threadsFilter); err != nil {
+		fmt.Println("GetForumUsers (1):", err)
+		return err
+	}
+	build := strings.Builder{}
+	build.WriteString(`
+		select id,title,author,forum, message,
+			votes, slug, created from thread
+			where forum = $1`)
+
+	if threadsFilter.Since != "" {
+		build.WriteString(fmt.
+			Sprintf(
+				` and created >= %s`,
+				threadsFilter.Since,
+			),
+		)
+	}
+	build.WriteString(`
+		  ORDER BY created 
+		    limit nullif($2,0)`)
+	if threadsFilter.Desc {
+		build.WriteString(" Desc")
+	}
+	if rows, err := DBS.
+		QueryContext(
+			ctx,
+			build.String(),
+			slug,
+			threadsFilter.Limit); err == nil {
+
+		threadsResponse := make([]forms.ThreadResult, 0, 100)
+		for rows.Next() {
+			thread := forms.Thread{}
+			if err = rows.
+				Scan(
+					&thread.Id,
+					&thread.Title,
+					&thread.Author,
+					&thread.Forum,
+					&thread.Message,
+					&thread.Votes,
+					&thread.Slug,
+					&thread.Created,
+				); err != nil {
+				fmt.Println("GetForumUsers (2):", err)
+
+				return eCtx.JSON(http.StatusInternalServerError, forms.Error{
+					Message: "smth wrong"})
+			}
+			threadsResponse = append(threadsResponse, forms.ThreadResult{
+				Id:      thread.Id,
+				Title:   thread.Title,
+				Author:  thread.Author,
+				Forum:   thread.Forum.String,
+				Message: thread.Message,
+				Votes:   thread.Votes,
+				Created: thread.Created,
+			})
+		}
+		return eCtx.JSON(http.StatusOK, threadsResponse)
+	}
+	return eCtx.JSON(http.StatusNotFound, forms.Error{
+		Message: "none such forum"})
+}

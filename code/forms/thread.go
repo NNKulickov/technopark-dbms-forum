@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+type ThreadFilter struct {
+	Limit int    `json:"limit,omitempty"`
+	Since string `json:"since,omitempty"`
+	Desc  bool   `json:"desc,omitempty"`
+}
+
 type Thread struct {
 	Id      int            `json:"id,omitempty"`
 	Title   string         `json:"title"`
