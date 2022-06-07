@@ -16,3 +16,10 @@ type PostFull struct {
 	Author User   `json:"author"`
 	Thread Thread `json:"thread"`
 }
+
+type ThreadPosts struct {
+	Limit int    `json:"limit,omitempty"`
+	Since int    `json:"since,omitempty"`
+	Sort  string `json:"sort,omitempty"`
+	Desc  bool   `json:"desc"`
+}

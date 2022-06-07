@@ -22,6 +22,11 @@ type Thread struct {
 	Created time.Time      `json:"created,omitempty"`
 }
 
+type ThreadUpdate struct {
+	Title   string `json:"title,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 type ThreadResult struct {
 	Id      int       `json:"id"`
 	Title   string    `json:"title"`
@@ -31,11 +36,6 @@ type ThreadResult struct {
 	Votes   int       `json:"votes"`
 	Slug    string    `json:"slug"`
 	Created time.Time `json:"created"`
-}
-
-type ThreadUpdate struct {
-	Title   string `json:"title"`
-	Message string `json:"message"`
 }
 
 type Vote struct {

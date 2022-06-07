@@ -243,7 +243,6 @@ func GetForumThreads(eCtx echo.Context) error {
 		select id,title,author,forum, message,
 			votes, slug, created from thread
 			where forum = $1`)
-
 	if threadsFilter.Since != "" {
 		build.WriteString(fmt.
 			Sprintf(

@@ -52,7 +52,7 @@ func initThread(e *echo.Group) {
 	const (
 		slugged = "/:" + threadSlug
 		create  = slugged + "/create"
-		details = slugged + "/status"
+		details = slugged + "/details"
 		posts   = slugged + "/posts"
 		vote    = slugged + "/vote"
 	)
