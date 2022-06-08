@@ -47,8 +47,8 @@ func initDB(initDBPath string) *sql.DB {
 		os.Getenv("POSTGRES_DB"),
 	)
 	dbs, err := sql.Open("postgres", connectString)
-	dbs.SetMaxOpenConns(5)
-	dbs.SetMaxIdleConns(0)
+	dbs.SetMaxOpenConns(10)
+	dbs.SetMaxIdleConns(5)
 	if err != nil {
 		log.Fatal(err)
 	}
