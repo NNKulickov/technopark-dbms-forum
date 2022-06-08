@@ -7,14 +7,14 @@ type Post struct {
 	Message  string `json:"message"`
 	IsEdited bool   `json:"isEdited,omitempty"`
 	Forum    string `json:"forum,omitempty"`
-	Thread   int    `json:"thread,omitempty"`
+	Thread   int    `json:"thread"`
 	Created  string `json:"created,omitempty"`
 }
 
 type PostFull struct {
-	Post   Post   `json:"post"`
-	Author User   `json:"author"`
-	Thread Thread `json:"thread"`
+	Post   Post       `json:"post"`
+	Author User       `json:"author"`
+	Thread ThreadForm `json:"thread"`
 }
 
 type ThreadPosts struct {
