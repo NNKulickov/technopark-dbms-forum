@@ -6,6 +6,7 @@ import (
 	"github.com/NNKulickov/technopark-dbms-forum/api"
 	_ "github.com/NNKulickov/technopark-dbms-forum/docs"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	echoSwagger "github.com/swaggo/echo-swagger"
 	"io/ioutil"
 	"log"
@@ -19,6 +20,14 @@ func main() {
 	e.Debug = true
 	e.GET("/docs/*", echoSwagger.WrapHandler)
 	api.DBS = initDB(initialScriptPath)
+	e.Use(middleware.LoggerWithConfig(
+		middleware.LoggerConfig{
+			Format: `{"time":"${time_unix}",` +
+				`"status":${status},"error":"${error}","latency_human":"${latency_human}"` +
+				`"method":"${method}","uri":"${uri}",` +
+				"\n",
+		},
+	))
 	api.InitRoutes(e.Group("/api"))
 	log.Fatal(e.Start("0.0.0.0:5000"))
 }
@@ -38,7 +47,8 @@ func initDB(initDBPath string) *sql.DB {
 		os.Getenv("POSTGRES_DB"),
 	)
 	dbs, err := sql.Open("postgres", connectString)
-
+	dbs.SetMaxOpenConns(5)
+	dbs.SetMaxIdleConns(0)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -23,10 +23,13 @@ SET search_path = public, pg_catalog;
 
 CREATE TABLE IF NOT EXISTS actor (
     nickname VARCHAR(100) primary key,
-    fullname VARCHAR(400) NOT NULl DEFAULT '',
+    fullname VARCHAR(400) NOT NULl,
     about TEXT NOT NULl default '',
-    email VARCHAR(150) NOT NULL UNIQUE
+    email VARCHAR(150)
 );
+
+CREATE UNIQUE INDEX if not exists test_email on actor (lower(email));
+CREATE UNIQUE INDEX if not exists test_nickname on actor (lower(nickname));
 
 CREATE TABLE IF NOT EXISTS forum(
     slug VARCHAR(100) NOT NULL primary key,
@@ -36,16 +39,18 @@ CREATE TABLE IF NOT EXISTS forum(
         on DELETE CASCADE
 );
 
+CREATE UNIQUE INDEX if not exists test_forum on forum (lower(slug));
+
 CREATE SEQUENCE IF NOT EXISTS thread_id_seq;
 
 CREATE TABLE IF NOT EXISTS thread(
     id bigint primary key default nextval('thread_id_seq'),
-    title VARCHAR(300) NOT NULL unique,
+    title VARCHAR(300) NOT NULL,
     author VARCHAR(100) NOT NULL,
     forum VARCHAR(100),
     message TEXT NOT NULL,
     slug VARCHAR(150),
-    created timestamp DEFAULT now(),
+    created timestamp with time zone DEFAULT now(),
     foreign key (author) references actor (nickname)
         on DELETE CASCADE,
     foreign key (forum) references forum (slug)
@@ -65,7 +70,8 @@ CREATE TABLE IF NOT EXISTS post(
     on DELETE CASCADE not null,
     threadid bigint references thread(id)
     on DELETE CASCADE not null,
-    created timestamp DEFAULT now()
+    created timestamp DEFAULT now(),
+    pathtree bigint[]  default array []::bigint[]
 );
 
 CREATE SEQUENCE IF NOT EXISTS vote_id_seq;
@@ -76,6 +82,30 @@ CREATE TABLE IF NOT EXISTS vote(
     on DELETE CASCADE not null,
     nickname VARCHAR(100) references actor (nickname)
     on DELETE CASCADE not null,
-    voice smallint not null
+    voice smallint not null,
+    constraint unique_voice unique(threadid,nickname)
 );
 
+
+CREATE OR REPLACE FUNCTION updatePathTree() RETURNS trigger as
+$updatePathTree$
+Declare
+    parent_path         BIGINT[];
+begin
+    if ( new.parent = 0 ) then
+        new.pathtree := array_append(new.pathtree,new.id);
+    else
+        select pathtree from post where id = new.parent into parent_path;
+    new.pathtree := new.pathtree || parent_path || new.id;
+    end if;
+    Return new;
+end;
+$updatePathTree$ LANGUAGE plpgsql;
+
+drop trigger if exists updatePathTreeTrigger on post;
+
+CREATE TRIGGER  updatePathTreeTrigger
+    BEFORE INSERT
+    on post
+    for each row
+EXECUTE Function updatePathTree();

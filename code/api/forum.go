@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/NNKulickov/technopark-dbms-forum/forms"
+	"github.com/go-openapi/strfmt"
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -16,19 +18,23 @@ func CreateForum(eCtx echo.Context) error {
 		return err
 	}
 	ctx := eCtx.Request().Context()
-
-	_, err := DBS.ExecContext(ctx, `
-		insert into forum (slug,title,host) 
+	user, err := getUserFromDb(ctx, forum.User)
+	if err != nil {
+		return eCtx.JSON(404, forms.Error{
+			Message: "none such user"})
+	}
+	_, err = DBS.ExecContext(ctx, `
+		insert into forum (slug,title,host)
 		values ($1,$2,$3)
 	`,
 		forum.Slug,
 		forum.Title,
-		forum.User,
+		user.Nickname,
 	)
 	if err == nil {
 		return eCtx.JSON(201, forms.ForumResult{
 			Title:   forum.Title,
-			User:    forum.User,
+			User:    user.Nickname,
 			Slug:    forum.Slug,
 			Posts:   0,
 			Threads: 0,
@@ -42,7 +48,7 @@ func CreateForum(eCtx echo.Context) error {
 			    on th.forum = f.slug
 			left join post p 
 			    on p.forum = f.slug and p.threadid = th.id
-		where f.slug = $1 group by f.slug
+		where lower(f.slug) = lower($1) group by f.slug
 	`, forum.Slug).
 		Scan(
 			&res.Slug,
@@ -71,7 +77,7 @@ func GetForumDetails(eCtx echo.Context) error {
 			    on th.forum = f.slug
 			left join post p 
 			    on p.forum = f.slug and p.threadid = th.id
-		where f.slug = $1 group by f.slug
+		where lower(f.slug) = lower($1) group by f.slug
 	`, forumParam).
 		Scan(
 			&forum.Slug,
@@ -92,38 +98,55 @@ func GetForumDetails(eCtx echo.Context) error {
 
 func CreateForumThread(eCtx echo.Context) error {
 	slug := eCtx.Param(forumSlug)
-	thread := forms.Thread{}
+	thread := forms.ThreadForm{}
 	if err := eCtx.Bind(&thread); err != nil {
 		fmt.Println("CreateForumThread (1):", err)
 		return err
 	}
-	thread.Forum = sql.NullString{String: slug}
+	threadModel := forms.ThreadModel{
+		Title:   thread.Title,
+		Author:  thread.Author,
+		Forum:   slug,
+		Message: thread.Message,
+		Slug:    sql.NullString{String: thread.Slug, Valid: true},
+	}
 
 	ctx := eCtx.Request().Context()
 	// try insert
-	if err := DBS.QueryRowContext(ctx, `
-		insert into thread (title,author,forum,message)
-		values ($1,$2,$3,$4) returning id,created`,
-		thread.Title,
-		thread.Author,
-		thread.Forum,
-		thread.Message,
+	builder := strings.Builder{}
+	builder.WriteString("insert into thread (title,author,forum,message,slug")
+	if thread.Created != "" {
+		builder.WriteString(",created")
+	}
+	builder.WriteString(") values ($1,$2,$3,$4,nullif($5,'')")
+	if thread.Created != "" {
+
+		builder.WriteString(fmt.Sprintf(",'%s'", thread.Created))
+	}
+	builder.WriteString(") returning id,created")
+	var err error
+	if err = DBS.QueryRowContext(ctx, builder.String(),
+		threadModel.Title,
+		threadModel.Author,
+		threadModel.Forum,
+		threadModel.Message,
+		threadModel.Slug,
 	).
 		Scan(
-			&thread.Id,
-			&thread.Created,
+			&threadModel.Id,
+			&threadModel.Created,
 		); err == nil {
-		return eCtx.JSON(201, forms.ThreadResult{
-			Id:      thread.Id,
-			Title:   thread.Title,
-			Author:  thread.Author,
-			Forum:   thread.Forum.String,
-			Message: thread.Message,
-			Votes:   thread.Votes,
-			Created: thread.Created,
+		return eCtx.JSON(201, forms.ThreadForm{
+			Id:      threadModel.Id,
+			Title:   threadModel.Title,
+			Author:  threadModel.Author,
+			Forum:   threadModel.Forum,
+			Message: threadModel.Message,
+			Slug:    threadModel.Slug.String,
+			Votes:   threadModel.Votes,
+			Created: strfmt.DateTime(threadModel.Created.UTC()).String(),
 		})
 	}
-	fmt.Println("forum:", thread.Forum, "author:", thread.Author)
 	// select if exists
 	if err := DBS.QueryRowContext(eCtx.Request().Context(), `
 		select 
@@ -140,27 +163,28 @@ func CreateForumThread(eCtx echo.Context) error {
 			        on v.threadid = th.id
 		where th.forum = $1 and th.author = $2 
 		group by th.id`,
-		thread.Forum.String,
-		thread.Author,
+		threadModel.Forum,
+		threadModel.Author,
 	).
 		Scan(
-			&thread.Id,
-			&thread.Title,
-			&thread.Author,
-			&thread.Forum,
-			&thread.Message,
-			&thread.Slug,
-			&thread.Created,
-			&thread.Votes,
+			&threadModel.Id,
+			&threadModel.Title,
+			&threadModel.Author,
+			&threadModel.Forum,
+			&threadModel.Message,
+			&threadModel.Slug,
+			&threadModel.Created,
+			&threadModel.Votes,
 		); err == nil {
-		return eCtx.JSON(409, forms.ThreadResult{
-			Id:      thread.Id,
-			Title:   thread.Title,
-			Author:  thread.Author,
-			Forum:   thread.Forum.String,
-			Message: thread.Message,
-			Votes:   thread.Votes,
-			Created: thread.Created,
+		return eCtx.JSON(409, forms.ThreadForm{
+			Id:      threadModel.Id,
+			Title:   threadModel.Title,
+			Author:  threadModel.Author,
+			Forum:   threadModel.Forum,
+			Message: threadModel.Message,
+			Slug:    threadModel.Slug.String,
+			Votes:   threadModel.Votes,
+			Created: strfmt.DateTime(threadModel.Created.UTC()).String(),
 		})
 	}
 	fmt.Println("CreateForumThread not found (2)")
@@ -190,7 +214,6 @@ func GetForumUsers(eCtx echo.Context) error {
 	if users.Desc {
 		build.WriteString(" Desc")
 	}
-	fmt.Println("result: ", build.String())
 	if rows, err := DBS.QueryContext(ctx, build.String(), slug, users.Limit); err == nil {
 		usersResponse := make([]forms.User, 0, 100)
 
@@ -233,40 +256,69 @@ func addSinceUser(builder *strings.Builder, since string) {
 func GetForumThreads(eCtx echo.Context) error {
 	slug := eCtx.Param(forumSlug)
 	ctx := eCtx.Request().Context()
-	threadsFilter := forms.ThreadFilter{}
+	forum := ""
+	if err := DBS.QueryRowContext(ctx,
+		`select slug from forum where lower(slug) = lower($1)`,
+		slug).Scan(&forum); err != nil {
+		return eCtx.JSON(http.StatusNotFound, forms.Error{
+			Message: "none forum"})
+	}
+	slug = forum
+	limit, err := strconv.Atoi(eCtx.QueryParam("limit"))
+	if err != nil {
+		fmt.Println("err:", err)
+		limit = 0
+	}
+	desc, err := strconv.ParseBool(eCtx.QueryParam("desc"))
+	if err != nil {
+		fmt.Println("err:", err)
+		desc = false
+	}
+	threadsFilter := forms.ThreadFilter{
+		Limit: limit,
+		Since: eCtx.QueryParam("since"),
+		Desc:  desc,
+	}
 	if err := eCtx.Bind(&threadsFilter); err != nil {
-		fmt.Println("GetForumUsers (1):", err)
+		fmt.Println("GetForumUsers (3):", err)
 		return err
 	}
 	build := strings.Builder{}
 	build.WriteString(`
 		select id,title,author,forum, message,
-			votes, slug, created from thread
-			where forum = $1`)
+			slug, created from thread
+			where lower(forum) = lower($1)`)
 	if threadsFilter.Since != "" {
-		build.WriteString(fmt.
-			Sprintf(
-				` and created >= %s`,
-				threadsFilter.Since,
-			),
-		)
+		if desc {
+			build.WriteString(fmt.
+				Sprintf(
+					` and created <= '%s'`,
+					threadsFilter.Since,
+				),
+			)
+		} else {
+			build.WriteString(fmt.
+				Sprintf(
+					` and created >= '%s'`,
+					threadsFilter.Since,
+				),
+			)
+		}
 	}
-	build.WriteString(`
-		  ORDER BY created 
-		    limit nullif($2,0)`)
+	build.WriteString(" ORDER BY created")
 	if threadsFilter.Desc {
-		build.WriteString(" Desc")
+		build.WriteString(" desc")
 	}
+	build.WriteString(" limit nullif($2,0)")
 	if rows, err := DBS.
 		QueryContext(
 			ctx,
 			build.String(),
 			slug,
 			threadsFilter.Limit); err == nil {
-
-		threadsResponse := make([]forms.ThreadResult, 0, 100)
+		threadsResponse := make([]forms.ThreadForm, 0, 100)
 		for rows.Next() {
-			thread := forms.Thread{}
+			thread := forms.ThreadModel{}
 			if err = rows.
 				Scan(
 					&thread.Id,
@@ -274,23 +326,22 @@ func GetForumThreads(eCtx echo.Context) error {
 					&thread.Author,
 					&thread.Forum,
 					&thread.Message,
-					&thread.Votes,
 					&thread.Slug,
 					&thread.Created,
 				); err != nil {
-				fmt.Println("GetForumUsers (2):", err)
+				fmt.Println("GetForumUsers (4):", err)
 
 				return eCtx.JSON(http.StatusInternalServerError, forms.Error{
 					Message: "smth wrong"})
 			}
-			threadsResponse = append(threadsResponse, forms.ThreadResult{
+			threadsResponse = append(threadsResponse, forms.ThreadForm{
 				Id:      thread.Id,
 				Title:   thread.Title,
 				Author:  thread.Author,
-				Forum:   thread.Forum.String,
+				Forum:   thread.Forum,
 				Message: thread.Message,
-				Votes:   thread.Votes,
-				Created: thread.Created,
+				Slug:    thread.Slug.String,
+				Created: strfmt.DateTime(thread.Created.UTC()).String(),
 			})
 		}
 		return eCtx.JSON(http.StatusOK, threadsResponse)

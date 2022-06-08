@@ -11,15 +11,16 @@ type ThreadFilter struct {
 	Desc  bool   `json:"desc,omitempty"`
 }
 
-type Thread struct {
-	Id      int            `json:"id,omitempty"`
-	Title   string         `json:"title"`
-	Author  string         `json:"author"`
-	Forum   sql.NullString `json:"forum,omitempty"`
-	Message string         `json:"message"`
-	Votes   int            `json:"votes,omitempty"`
-	Slug    sql.NullString `json:"slug,omitempty"`
-	Created time.Time      `json:"created,omitempty"`
+type ThreadModel struct {
+	Id      int
+	Title   string
+	Author  string
+	Forum   string
+	Message string
+	Votes   int
+	Slug    sql.NullString
+
+	Created time.Time
 }
 
 type ThreadUpdate struct {
@@ -27,15 +28,15 @@ type ThreadUpdate struct {
 	Message string `json:"message,omitempty"`
 }
 
-type ThreadResult struct {
-	Id      int       `json:"id"`
-	Title   string    `json:"title"`
-	Author  string    `json:"author"`
-	Forum   string    `json:"forum"`
-	Message string    `json:"message"`
-	Votes   int       `json:"votes"`
-	Slug    string    `json:"slug"`
-	Created time.Time `json:"created"`
+type ThreadForm struct {
+	Id      int    `json:"id,omitempty"`
+	Title   string `json:"title"`
+	Author  string `json:"author"`
+	Forum   string `json:"forum,omitempty"`
+	Message string `json:"message"`
+	Votes   int    `json:"votes,omitempty"`
+	Slug    string `json:"slug"`
+	Created string `json:"created,omitempty"`
 }
 
 type Vote struct {
