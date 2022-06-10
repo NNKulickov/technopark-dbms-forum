@@ -19,15 +19,22 @@ func getPostsFlat(ctx context.Context, threadid, limit, since int, desc bool) ([
 		select id,parent,author,message,isedited,forum,threadid,created
 			from post where threadid = $1`)
 	if since > 0 {
-		builder.WriteString(fmt.Sprintf(" and id > %d", since))
+		if desc {
+			builder.WriteString(fmt.Sprintf(" and id < %d", since))
+
+		} else {
+			builder.WriteString(fmt.Sprintf(" and id > %d", since))
+
+		}
 	}
 
-	builder.WriteString(" order by created ")
+	builder.WriteString(" order by id")
 
 	if desc {
-		builder.WriteString("desc")
+		builder.WriteString(" desc")
 	}
-	builder.WriteString(" limit nullif($2,0)")
+	builder.WriteString(",created limit nullif($2,0)")
+	fmt.Println("flat:", builder.String())
 	rows, err := DBS.QueryContext(ctx, builder.String(),
 		threadid, limit)
 	if err != nil {
@@ -57,24 +64,36 @@ func getPostsFlat(ctx context.Context, threadid, limit, since int, desc bool) ([
 func getPostsParentTree(ctx context.Context, threadid, limit, since int, desc bool) ([]forms.Post, error) {
 	posts := []forms.Post{}
 	builder := strings.Builder{}
-	builder.WriteString(`with parents(id,parent,author,message,isedited,forum,threadid,created,path) as (`)
-	builder.WriteString(`
-		select id,parent,author,message,isedited,forum,threadid,created,path
-			from post where threadid = $1 and parent = 0`)
+	subBuilder := strings.Builder{}
+	subBuilder.WriteString(`
+		select id from post where threadid = $1 and parent = 0`)
 	if since > 0 {
-		builder.WriteString(fmt.Sprintf(" and id > %d", since))
+		subBuilder.WriteString(" and pathtree[1]")
+		if desc {
+			subBuilder.WriteString(" <")
+		} else {
+			subBuilder.WriteString(" >")
+		}
+		subBuilder.WriteString(fmt.Sprintf(" (select pathtree[1] from post where id = %d)", since))
+
 	}
 
-	builder.WriteString(" order by id")
+	subBuilder.WriteString(" order by id")
 
 	if desc {
-		builder.WriteString("desc")
+		subBuilder.WriteString(" desc")
 	}
-	builder.WriteString(" limit nullif($2,0) )")
-	builder.WriteString(`
-				select id,parent,author,message,isedited,forum,threadid,created,path
-			from post where threadid = $1 and id in parents.path
-		 `)
+	subBuilder.WriteString(" limit nullif($2,0)")
+	builder.WriteString(fmt.Sprintf(`
+				select id,parent,author,message,isedited,forum,threadid,created
+			from post where pathtree[1] in (%s)
+		 `, subBuilder.String()))
+	if desc {
+		builder.WriteString(" order by pathtree[1] desc,pathtree")
+	} else {
+		builder.WriteString(" order by pathtree")
+
+	}
 	fmt.Println("getPostsParentTree:", builder.String())
 	rows, err := DBS.QueryContext(ctx, builder.String(),
 		threadid, limit)
@@ -111,15 +130,22 @@ func getPostsTree(ctx context.Context, threadid, limit, since int, desc bool) ([
 		select id,parent,author,message,isedited,forum,threadid,created
 			from post where threadid = $1`)
 	if since > 0 {
-		builder.WriteString(fmt.Sprintf(" and id > %d", since))
+		builder.WriteString(" and pathtree")
+		if desc {
+			builder.WriteString(" <")
+		} else {
+			builder.WriteString(" >")
+		}
+		builder.WriteString(fmt.Sprintf(" (select pathtree from post where id = %d)", since))
 	}
 
-	builder.WriteString(" order by id,parent ")
+	builder.WriteString(" order by pathtree ")
 
 	if desc {
 		builder.WriteString("desc")
 	}
 	builder.WriteString(" limit nullif($2,0)")
+	fmt.Println("query:", builder.String())
 	rows, err := DBS.QueryContext(ctx, builder.String(),
 		threadid, limit)
 	if err != nil {
