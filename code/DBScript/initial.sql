@@ -32,7 +32,7 @@ CREATE UNIQUE INDEX if not exists test_email on actor (lower(email));
 CREATE UNIQUE INDEX if not exists test_nickname on actor (lower(nickname));
 
 CREATE TABLE IF NOT EXISTS forum(
-    slug VARCHAR(100) NOT NULL primary key,
+    slug VARCHAR(100) primary key,
     title VARCHAR(100) NOT NULL,
     host VARCHAR(100) NOT NULL,
     foreign key (host) references actor (nickname)
@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS thread(
     foreign key (forum) references forum (slug)
         on DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX if not exists test_thread on thread (lower(slug));
 
 CREATE SEQUENCE IF NOT EXISTS post_id_seq;
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/NNKulickov/technopark-dbms-forum/forms"
@@ -67,25 +68,9 @@ func CreateForum(eCtx echo.Context) error {
 
 func GetForumDetails(eCtx echo.Context) error {
 	forumParam := eCtx.Param(forumSlug)
-	forum := forms.ForumResult{}
 	ctx := eCtx.Request().Context()
 
-	err := DBS.QueryRowContext(ctx, `
-		select f.slug,f.title,f.host,count(th) threads, count(p) posts
-		from forum f
-			left join thread th 
-			    on th.forum = f.slug
-			left join post p 
-			    on p.forum = f.slug and p.threadid = th.id
-		where lower(f.slug) = lower($1) group by f.slug
-	`, forumParam).
-		Scan(
-			&forum.Slug,
-			&forum.Title,
-			&forum.User,
-			&forum.Threads,
-			&forum.Posts,
-		)
+	forum, err := getForum(ctx, forumParam)
 	if err != nil {
 		fmt.Println("CreateForum (2):", err)
 		return eCtx.JSON(404, forms.Error{
@@ -99,19 +84,25 @@ func GetForumDetails(eCtx echo.Context) error {
 func CreateForumThread(eCtx echo.Context) error {
 	slug := eCtx.Param(forumSlug)
 	thread := forms.ThreadForm{}
+	ctx := eCtx.Request().Context()
 	if err := eCtx.Bind(&thread); err != nil {
 		fmt.Println("CreateForumThread (1):", err)
 		return err
 	}
+	forum, err := getForum(ctx, slug)
+	if err != nil {
+		fmt.Println("CreateForumThread (2):", err)
+		return eCtx.JSON(404, forms.Error{
+			Message: "none such user or forum"})
+	}
 	threadModel := forms.ThreadModel{
 		Title:   thread.Title,
 		Author:  thread.Author,
-		Forum:   slug,
+		Forum:   forum.Slug,
 		Message: thread.Message,
 		Slug:    sql.NullString{String: thread.Slug, Valid: true},
 	}
 
-	ctx := eCtx.Request().Context()
 	// try insert
 	builder := strings.Builder{}
 	builder.WriteString("insert into thread (title,author,forum,message,slug")
@@ -124,7 +115,6 @@ func CreateForumThread(eCtx echo.Context) error {
 		builder.WriteString(fmt.Sprintf(",'%s'", thread.Created))
 	}
 	builder.WriteString(") returning id,created")
-	var err error
 	if err = DBS.QueryRowContext(ctx, builder.String(),
 		threadModel.Title,
 		threadModel.Author,
@@ -148,23 +138,18 @@ func CreateForumThread(eCtx echo.Context) error {
 		})
 	}
 	// select if exists
-	if err := DBS.QueryRowContext(eCtx.Request().Context(), `
-		select 
-		th.id,
-		th.title,
-		th.author,
-		th.forum,
-		th.message,
-		th.slug,
-		th.created,
-		count(v)
-			from thread th 
-			    left join vote v 
-			        on v.threadid = th.id
-		where th.forum = $1 and th.author = $2 
-		group by th.id`,
-		threadModel.Forum,
-		threadModel.Author,
+	if err = DBS.QueryRowContext(eCtx.Request().Context(), `
+		select
+		id,
+		title,
+		author,
+		forum,
+		message,
+		slug,
+		created
+		from thread 
+		where lower(slug) = lower($1)`,
+		threadModel.Slug.String,
 	).
 		Scan(
 			&threadModel.Id,
@@ -174,7 +159,6 @@ func CreateForumThread(eCtx echo.Context) error {
 			&threadModel.Message,
 			&threadModel.Slug,
 			&threadModel.Created,
-			&threadModel.Votes,
 		); err == nil {
 		return eCtx.JSON(409, forms.ThreadForm{
 			Id:      threadModel.Id,
@@ -183,11 +167,10 @@ func CreateForumThread(eCtx echo.Context) error {
 			Forum:   threadModel.Forum,
 			Message: threadModel.Message,
 			Slug:    threadModel.Slug.String,
-			Votes:   threadModel.Votes,
 			Created: strfmt.DateTime(threadModel.Created.UTC()).String(),
 		})
 	}
-	fmt.Println("CreateForumThread not found (2)")
+	fmt.Println("CreateForumThread not found (3)", err)
 	return eCtx.JSON(404, forms.Error{
 		Message: "none such user or forum"})
 }
@@ -348,4 +331,26 @@ func GetForumThreads(eCtx echo.Context) error {
 	}
 	return eCtx.JSON(http.StatusNotFound, forms.Error{
 		Message: "none such forum"})
+}
+
+func getForum(ctx context.Context, slug string) (forms.ForumResult, error) {
+	forum := forms.ForumResult{}
+
+	err := DBS.QueryRowContext(ctx, `
+		select f.slug,f.title,f.host,count(th) threads, count(p) posts
+		from forum f
+			left join thread th 
+			    on th.forum = f.slug
+			left join post p 
+			    on p.forum = f.slug and p.threadid = th.id
+		where lower(f.slug) = lower($1) group by f.slug
+	`, slug).
+		Scan(
+			&forum.Slug,
+			&forum.Title,
+			&forum.User,
+			&forum.Threads,
+			&forum.Posts,
+		)
+	return forum, err
 }
