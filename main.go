@@ -1,298 +1,70 @@
 package main
 
-//go:generate go-bindata -pkg assets -o generated/assets/assets.go -prefix assets/ assets/...
-//go:generate swagger generate client --target generated --spec ./swagger.yml
-//go:generate easyjson -all generated/models/
 import (
-	"compress/gzip"
+	"database/sql"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
+	"github.com/NNKulickov/technopark-dbms-forum/api"
+	_ "github.com/NNKulickov/technopark-dbms-forum/docs"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	echoSwagger "github.com/swaggo/echo-swagger"
+	"io/ioutil"
+	"log"
 	"os"
-	"reflect"
-	"regexp"
-	"strings"
-	"time"
-
-	"github.com/mkideal/cli"
-	"github.com/op/go-logging"
-
-	"github.com/mailcourses/technopark-dbms-forum/tests"
 )
 
-const (
-	EXIT_INVALID_COMMAND = iota + 1
-	EXIT_WAIT_ALIVE_TIMEOUT
-	EXIT_FUNC_FAILED
-	EXIT_FILL_FAILED
-)
-
-type parserUrl struct {
-	ptr interface{}
-}
-
-type parserRegexp struct {
-	ptr interface{}
-}
-
-func newParserUrl(ptr interface{}) cli.FlagParser {
-	return &parserUrl{ptr}
-}
-
-func newParserRegexp(ptr interface{}) cli.FlagParser {
-	return &parserRegexp{ptr}
-}
-
-func (parser *parserUrl) Parse(s string) error {
-	u, err := url.Parse(s)
-	if err == nil {
-		val := reflect.ValueOf(parser.ptr)
-		val.Elem().Set(reflect.ValueOf(*u))
-	}
-	return err
-}
-
-func (parser *parserRegexp) Parse(s string) error {
-	u, err := regexp.Compile(s)
-	if err == nil {
-		val := reflect.ValueOf(parser.ptr)
-		val.Elem().Set(reflect.ValueOf(*u))
-	}
-	return err
-}
-
-type CmdCommonT struct {
-	cli.Helper
-	Url             *url.URL `cli:"u,url" usage:"Base url for testing API" parser:"url" dft:"http://localhost:5000/api"`
-	WaitAlive       int      `cli:"wait" usage:"Wait before remote API make alive (while connection refused or 5XX error on base url)" dft:"30"`
-	DontCheckUpdate bool     `cli:"no-check" usage:"Do not check version update"`
-}
-
-var root = &cli.Command{
-	Desc: "https://github.com/mailcourses/technopark-dbms-forum",
-	Argv: func() interface{} { return nil },
-	Fn: func(ctx *cli.Context) error {
-		ctx.WriteUsage()
-		os.Exit(EXIT_INVALID_COMMAND)
-		return nil
-	},
-}
-
-type CmdFuncT struct {
-	CmdCommonT
-	Keep   bool           `cli:"k,keep" usage:"Don't stop after first failed test'"`
-	Test   *regexp.Regexp `cli:"t,tests" usage:"Mask for running test names (regexp)" parser:"regexp" dft:".*"`
-	Report string         `cli:"r,report" usage:"Detailed report file" dft:"report.html"`
-}
-
-var cmdFunc = &cli.Command{
-	Name: "func",
-	Desc: "run functional testing",
-	Argv: func() interface{} { return new(CmdFuncT) },
-	Fn: func(ctx *cli.Context) error {
-		argv := ctx.Argv().(*CmdFuncT)
-		commonPrepare(argv.CmdCommonT)
-		if tests.Run(argv.Url, argv.Test, argv.Report, argv.Keep) > 0 {
-			os.Exit(EXIT_FUNC_FAILED)
-		}
-		return nil
-	},
-}
-
-type CmdFillT struct {
-	CmdCommonT
-	Threads   int    `cli:"t,thread" usage:"Number of threads for generating data" dft:"8"`
-	Timeout   int    `cli:"timeout" usage:"Fill timeout (sec)" dft:"1800"`
-	StateFile string `cli:"o,state" usage:"State file with information about database objects" dft:"tech-db-forum.dat.gz"`
-}
-
-var cmdFill = &cli.Command{
-	Name: "fill",
-	Desc: "fill database with random data",
-	Argv: func() interface{} { return new(CmdFillT) },
-	Fn: func(ctx *cli.Context) error {
-		argv := ctx.Argv().(*CmdFillT)
-		commonPrepare(argv.CmdCommonT)
-		perf := tests.NewPerf(argv.Url, tests.NewPerfConfig())
-		perf.Fill(argv.Threads, argv.Timeout, tests.NewPerfConfig())
-		if perf == nil {
-			os.Exit(EXIT_FILL_FAILED)
-		}
-		file, err := os.Create(argv.StateFile)
-		defer file.Close()
-		var writer io.Writer = file
-
-		var zw *gzip.Writer
-		if strings.HasSuffix(argv.StateFile, ".gz") {
-			zw = gzip.NewWriter(writer)
-			writer = zw
-		}
-		if err != nil {
-			log.Error("Can't create file: " + argv.StateFile)
-			os.Exit(EXIT_FILL_FAILED)
-		}
-		err = perf.Save(writer)
-		if err != nil {
-			log.Error("Can't save to file: " + argv.StateFile)
-			os.Exit(EXIT_FILL_FAILED)
-		}
-		if zw != nil {
-			zw.Flush()
-			zw.Close()
-		}
-		return nil
-	},
-}
-
-type CmdPerfT struct {
-	CmdCommonT
-	Threads   int     `cli:"t,thread" usage:"Number of threads for performance testing" dft:"8"`
-	Timeout   int     `cli:"timeout" usage:"Fill timeout (sec)" dft:"1800"`
-	StateFile string  `cli:"i,state" usage:"State file with information about database objects" dft:"tech-db-forum.dat.gz"`
-	BestFile  string  `cli:"o,best" usage:"File for best result" dft:"tech-db-forum.best.txt"`
-	Validate  float32 `cli:"v,validate" usage:"The probability of verifying the answer" dft:"0.05"`
-	Duration  int     `cli:"d,duration" usage:"Test duration (sec)" dft:"-1"`
-	Step      int     `cli:"s,step" usage:"Sampling step (sec)" dft:"10"`
-}
-
-var cmdPerf = &cli.Command{
-	Name: "perf",
-	Desc: "run performance testing",
-	Argv: func() interface{} { return new(CmdPerfT) },
-	Fn: func(ctx *cli.Context) error {
-		argv := ctx.Argv().(*CmdPerfT)
-		commonPrepare(argv.CmdCommonT)
-
-		config := tests.NewPerfConfig()
-		if argv.Validate >= 0 {
-			config.Validate = argv.Validate
-		}
-		perf := tests.NewPerf(argv.Url, config)
-		if argv.StateFile == "" {
-			perf.Fill(argv.Threads, argv.Timeout, config)
-		} else {
-			log.Infof("Loading state file: %s", argv.StateFile)
-			file, err := os.Open(argv.StateFile)
-			defer file.Close()
-			var reader io.Reader = file
-			if strings.HasSuffix(argv.StateFile, ".gz") {
-				reader, err = gzip.NewReader(reader)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-			if err != nil {
-				log.Error("Can't open file: " + argv.StateFile)
-				os.Exit(EXIT_FILL_FAILED)
-			}
-			err = perf.Load(reader)
-			if err != nil {
-				log.Error("Can't load from file: " + argv.StateFile)
-				os.Exit(EXIT_FILL_FAILED)
-			}
-		}
-
-		log.Info("Begin performance test")
-		best := perf.Run(argv.Threads, argv.Duration, argv.Step)
-		if argv.BestFile != "" {
-			if file, err := os.Create(argv.BestFile); err == nil {
-				file.WriteString(fmt.Sprintf("%d", int(best+0.5)))
-				file.Close()
-			}
-		}
-		return nil
-	},
-}
-
-var cmdVersion = &cli.Command{
-	Name: "version",
-	Desc: "show version",
-	Argv: func() interface{} { return new(CmdFillT) },
-	Fn: func(ctx *cli.Context) error {
-		fmt.Println(tests.VersionFull())
-		if ver, err := tests.VersionCheck(); err == nil {
-			switch ver {
-			case tests.VERSION_LATEST:
-				log.Infof("You use latest version of %s tool.", tests.Project)
-			case tests.VERSION_LOCAL:
-				log.Infof("You use local build of %s tool.", tests.Project)
-			case tests.VERSION_OUTDATE:
-				log.Warningf("You use outdated version of %s tool. Please update.", tests.Project)
-			}
-		}
-		return nil
-	},
-}
-var log = logging.MustGetLogger("main")
-
-func commonPrepare(argv CmdCommonT) {
-	checkUpdate(argv)
-	waitAlive(argv)
-}
-
-func checkUpdate(argv CmdCommonT) {
-	if !argv.DontCheckUpdate {
-		if ver, _ := tests.VersionCheck(); ver == tests.VERSION_OUTDATE {
-			log.Warningf("You use outdated version of %s tool. Please update.", tests.Project)
-		}
-	}
-}
-
-func waitAlive(argv CmdCommonT) {
-	req, err := http.NewRequest("GET", argv.Url.String(), nil)
-	if err != nil {
-		panic(err)
-	}
-	lst := ""
-
-	if argv.WaitAlive <= 0 {
-		return
-	}
-	timeout := time.Now().Add(time.Duration(argv.WaitAlive) * time.Second)
-	for time.Now().Before(timeout) {
-		msg := ""
-		if err == nil {
-			res, err := tests.HttpTransport.RoundTrip(req)
-			if err != nil {
-				msg = fmt.Sprintf("Connection error: %s", err.Error())
-			} else if res.StatusCode >= 500 && res.StatusCode < 600 {
-				msg = fmt.Sprintf("Invalid response code: %d", res.StatusCode)
-			} else {
-				if lst != "" {
-					log.Info("Service is alive")
-				}
-				return
-			}
-		}
-		if lst != msg {
-			log.Warning("Service unavailable: " + msg)
-			lst = msg
-		}
-		time.Sleep(time.Second / 10)
-	}
-	log.Error("Wait service alive timeout")
-	os.Exit(EXIT_WAIT_ALIVE_TIMEOUT)
-}
+const initialScriptPath = "./DBScript/initial.sql"
 
 func main() {
-	format := logging.MustStringFormatter(
-		`%{color}%{time:15:04:05.000} %{level:.4s}%{color:reset} %{message}`,
+	e := echo.New()
+	e.Debug = true
+	e.GET("/docs/*", echoSwagger.WrapHandler)
+	api.DBS = initDB(initialScriptPath)
+	e.Use(middleware.LoggerWithConfig(
+		middleware.LoggerConfig{
+			Format: `{"time":"${time_unix}",` +
+				`"status":${status},"error":"${error}","latency_human":"${latency_human}"` +
+				`"method":"${method}","uri":"${uri}",` +
+				"\n",
+		},
+	))
+	api.InitRoutes(e.Group("/api"))
+	log.Fatal(e.Start("0.0.0.0:5000"))
+}
+
+func initDB(initDBPath string) *sql.DB {
+	connectString := fmt.Sprintf(
+		`host=%s
+				port=5432
+				user=%s
+				password=%s
+				dbname=%s
+				sslmode=disable
+				TimeZone=Europe/Moscow`,
+		os.Getenv("DB_HOST"),
+		os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"),
+		os.Getenv("POSTGRES_DB"),
 	)
-	backend := logging.NewLogBackend(os.Stderr, "", 0)
-
-	// Set the backends to be used.
-	logging.SetBackend(logging.NewBackendFormatter(backend, format))
-
-	cli.RegisterFlagParser("regexp", newParserRegexp)
-
-	if err := cli.Root(root,
-		cli.Tree(cmdFunc),
-		cli.Tree(cmdFill),
-		cli.Tree(cmdPerf),
-		cli.Tree(cmdVersion),
-	).Run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(EXIT_INVALID_COMMAND)
+	dbs, err := sql.Open("postgres", connectString)
+	dbs.SetMaxOpenConns(100)
+	dbs.SetMaxIdleConns(20)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	if err = dbs.Ping(); err != nil {
+		log.Fatal(err)
+	}
+	sql, err := ioutil.ReadFile(initDBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = dbs.Exec(string(sql))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return dbs
 }
