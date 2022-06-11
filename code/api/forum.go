@@ -41,26 +41,9 @@ func CreateForum(eCtx echo.Context) error {
 			Threads: 0,
 		})
 	}
-	res := forms.ForumResult{}
-	if err = DBS.QueryRowContext(ctx, `
-		select f.slug,f.title,f.host,count(th) threads, count(p) posts
-		from forum f
-			left join thread th 
-			    on th.forum = f.slug
-			left join post p 
-			    on p.forum = f.slug and p.threadid = th.id
-		where lower(f.slug) = lower($1) group by f.slug
-	`, forum.Slug).
-		Scan(
-			&res.Slug,
-			&res.Title,
-			&res.User,
-			&res.Threads,
-			&res.Posts,
-		); err == nil {
-		return eCtx.JSON(409, res)
+	if res, err := getForum(ctx, forum.Slug); err == nil {
+		return eCtx.JSON(http.StatusConflict, res)
 	}
-
 	fmt.Println("CreateForum (2):", err)
 	return eCtx.JSON(404, forms.Error{
 		Message: "none such user"})
@@ -72,7 +55,7 @@ func GetForumDetails(eCtx echo.Context) error {
 
 	forum, err := getForum(ctx, forumParam)
 	if err != nil {
-		fmt.Println("CreateForum (2):", err)
+		fmt.Println("CreateForum (1):", err)
 		return eCtx.JSON(404, forms.Error{
 			Message: "none such forum"})
 	}
@@ -178,28 +161,57 @@ func CreateForumThread(eCtx echo.Context) error {
 func GetForumUsers(eCtx echo.Context) error {
 	slug := eCtx.Param(forumSlug)
 	ctx := eCtx.Request().Context()
-	users := forms.UserFilter{}
-	if err := eCtx.Bind(&users); err != nil {
+	forum, err := getForum(ctx, slug)
+	if err != nil {
+		fmt.Println("GetForumUsers (0):", err)
+		return eCtx.JSON(http.StatusNotFound, forms.Error{
+			Message: "none such forum"})
+	}
+	slug = forum.Slug
+	limit := 0
+	desc := false
+	limitString := eCtx.QueryParam("limit")
+	descString := eCtx.QueryParam("desc")
+	if limit, err = strconv.Atoi(limitString); err != nil {
 		fmt.Println("GetForumUsers (1):", err)
-		return err
 	}
+	if desc, err = strconv.ParseBool(descString); err != nil {
+		fmt.Println("GetForumUsers (2):", err)
+	}
+	users := forms.UserFilter{
+		Limit: limit,
+		Desc:  desc,
+		Since: eCtx.QueryParam("since"),
+	}
+	usersQuery := `
+		select a.nickname,a.fullname,a.about,a.email from post p
+			join actor a on lower(p.author) = lower(a.nickname) 
+		where lower(p.forum) = lower($1)
+		union
+		select a.nickname,a.fullname,a.about,a.email from thread t
+			join actor a on lower(t.author) = lower(a.nickname)
+		where lower(t.forum) = lower($1)`
+
 	build := strings.Builder{}
-	build.WriteString("with users(nickname,fullname,about,email) as (")
-	addSourceUser(&build, "post")
-	addSinceUser(&build, users.Since)
-	addSourceUser(&build, "thread")
-	addSinceUser(&build, users.Since)
-	build.WriteString(`
-		select nickname,fullname,about,email from users 
-		    ORDER BY lower(nickname) 
-		    limit nullif($2,0)
-		`)
-	if users.Desc {
-		build.WriteString(" Desc")
+	build.WriteString(fmt.Sprintf(`
+			select nickname,fullname,about,email from ( %s ) users
+	`, usersQuery))
+	if users.Since != "" {
+		if users.Desc {
+			build.WriteString(fmt.Sprintf(` where lower(nickname) collate "C" <  lower('%s') collate "C"`, users.Since))
+
+		} else {
+			build.WriteString(fmt.Sprintf(` where lower(nickname) collate "C" >  lower('%s') collate "C"`, users.Since))
+
+		}
 	}
+	build.WriteString(` order by lower(nickname) collate "C"`)
+	if users.Desc {
+		build.WriteString(" desc")
+	}
+	build.WriteString(" limit nullif($2,0)")
 	if rows, err := DBS.QueryContext(ctx, build.String(), slug, users.Limit); err == nil {
 		usersResponse := make([]forms.User, 0, 100)
-
 		for rows.Next() {
 			user := forms.User{}
 			if err = rows.
@@ -337,13 +349,14 @@ func getForum(ctx context.Context, slug string) (forms.ForumResult, error) {
 	forum := forms.ForumResult{}
 
 	err := DBS.QueryRowContext(ctx, `
-		select f.slug,f.title,f.host,count(th) threads, count(p) posts
-		from forum f
-			left join thread th 
-			    on th.forum = f.slug
-			left join post p 
-			    on p.forum = f.slug and p.threadid = th.id
-		where lower(f.slug) = lower($1) group by f.slug
+	with 
+	    threads as (
+			select count(*) threads from thread where lower(forum) = lower($1)
+		),
+	    posts as (
+	    	select count(*) posts from post where lower(forum)= lower($1)
+	    )
+	select f.slug,f.title,f.host,t.threads,p.posts from threads t,posts p, forum f where lower(f.slug) = lower($1);
 	`, slug).
 		Scan(
 			&forum.Slug,

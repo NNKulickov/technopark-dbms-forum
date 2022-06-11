@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS post(
     pathtree bigint[]  default array []::bigint[]
 );
 
+CREATE UNIQUE INDEX if not exists upost_parent_author on post (lower(author),message,parent);
+
 CREATE SEQUENCE IF NOT EXISTS vote_id_seq;
 
 CREATE TABLE IF NOT EXISTS vote(

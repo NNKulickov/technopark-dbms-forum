@@ -2,7 +2,7 @@ package forms
 
 type Post struct {
 	Id       int    `json:"id,omitempty"`
-	Parent   int    `json:"parent"`
+	Parent   int    `json:"parent,omitempty"`
 	Author   string `json:"author"`
 	Message  string `json:"message"`
 	IsEdited bool   `json:"isEdited,omitempty"`
@@ -22,4 +22,15 @@ type ThreadPosts struct {
 	Since int    `json:"since,omitempty"`
 	Sort  string `json:"sort,omitempty"`
 	Desc  bool   `json:"desc"`
+}
+
+type PostUpdate struct {
+	Message string `json:"message"`
+}
+
+type PostDetails struct {
+	Post   Post         `json:"post"`
+	Author *User        `json:"author,omitempty"`
+	Thread *ThreadForm  `json:"thread,omitempty"`
+	Forum  *ForumResult `json:"forum,omitempty"`
 }

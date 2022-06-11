@@ -33,7 +33,7 @@ func initForum(e *echo.Group) {
 
 func initPost(e *echo.Group) {
 	const (
-		postDetails = "/:" + postSlug + "details"
+		postDetails = "/:" + postSlug + "/details"
 	)
 	e.GET(postDetails, GetPostDetails)
 	e.POST(postDetails, UpdatePostDetails)
