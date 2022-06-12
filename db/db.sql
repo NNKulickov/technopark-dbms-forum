@@ -145,6 +145,5 @@ CREATE TRIGGER  updateThreadsVotesTrigger
     for each row
 EXECUTE Function updateThreadsVotes();
 
-CREATE INDEX IF NOT EXISTS forum_slug_hash ON forum using hash (slug);
 CREATE INDEX IF NOT EXISTS thread_parenttree_post on post (threadid,pathtree);
 CREATE INDEX IF NOT EXISTS first_parent_post on post ((pathtree[1]),pathtree);
