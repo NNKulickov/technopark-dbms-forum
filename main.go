@@ -13,7 +13,7 @@ import (
 	"os"
 )
 
-const initialScriptPath = "./DBScript/initial.sql"
+const initialScriptPath = "./db/db.sql"
 
 func main() {
 	e := echo.New()

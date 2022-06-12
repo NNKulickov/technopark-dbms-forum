@@ -86,6 +86,7 @@ func CreateThreadPost(eCtx echo.Context) error {
 		return err
 	}
 	rows, err := prep.QueryContext(ctx, args...)
+	defer prep.Close()
 	if err != nil {
 		fmt.Println("CreateThreadPost (7):", err)
 		return eCtx.JSON(http.StatusNotFound, forms.Error{

@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-const initialScriptPath = "./DBScript/initial.sql"
+const initialScriptPath = "./db/db.sql"
 
 func GetServiceStatus(eCtx echo.Context) error {
 	ctx := eCtx.Request().Context()
